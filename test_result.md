@@ -142,19 +142,33 @@ frontend:
         -agent: "testing"
         -comment: "TESTED via localStorage injection (bypassing budget-exhausted backend). Injected pre-built plan with 3 scenes into localStorage key 'broll.studio.v3', then tested /preview page. VERIFIED WORKING: (1) 16:9 ratio: Player renders at 1920×1080@30fps, header and render summary show correct dimensions/colors (#0A0A0B bg, #E4B8A0 highlight). (2) Remotion player renders animated content (NOT solid black) - confirmed via playback screenshots showing B-roll placeholder blocks with centered description text (CRM Dashboard, Clock Animation, Analytics Graph) and B-roll label chips in top-right corner (e.g., '▸ B-ROLL · SCREEN RECORDING'). (3) Headlines animate and display correctly ('Save 10 Hours Every Week', 'Time Is Everything', 'Grow Your Revenue'). (4) Keywords are visibly styled with different font (italics) - 'Hours', 'Time', 'Revenue', 'analytics' all appear in italics vs. regular text, confirming opposite font logic works. (5) Scene strip shows all 3 scenes with headlines and B-roll descriptions. (6) Scene strip scrubbing works - clicking scene 2 and 3 changes active scene styling and player content. (7) 9:16 vertical ratio: Player renders at 1080×1920@30fps, render summary shows '9:16', layout is ratio-safe (portrait frame). Playback works for both ratios. Minor: Font loading warnings for Gotham-BookItalic (OTS parsing error) are non-blocking. Console shows 422 errors (likely backend API calls) but do not affect preview functionality. The Remotion preview feature is fully functional when plan data is available."
 
+  - task: "Phase 6 — MP4 Export (client-side canvas + MediaRecorder)"
+    implemented: true
+    working: true
+    file: "frontend/src/lib/videoExport.js, frontend/src/components/broll/ExportPanel.jsx, frontend/src/pages/Export.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Built real client-side MP4 export. New lib/videoExport.js renders the plan onto a 2D canvas (mirrors Remotion composition: brand colors, main/opposite fonts, keyword highlight, B-roll placeholder blocks + label chips, slow zoom, cross-fade, scene order, -2px letter spacing) and records via MediaRecorder with mime preference MP4/H.264 -> WebM fallback (pickMimeType). Export page shows: final Remotion preview, project title, ratio, scene count, duration, Export button, real-time progress %, auto-download on completion + 'Download again' / 'Re-render', cancel during render, and an empty state when no plan. Verified via screenshot that /export renders (Format shows 'MP4 · H.264' in Chromium). NEEDS UI TEST: click Export MP4, confirm progress reaches 100%, a file actually downloads, done banner + download-again appear; confirm 9:16 also exports."
+        -working: true
+        -agent: "testing"
+        -comment: "FULLY TESTED AND WORKING. Injected pre-built plan (2 scenes, 2s each = 4s total) into localStorage and tested MP4 export for BOTH ratios. 16:9 EXPORT: /export page loaded correctly with all UI elements (project title 'Save 10 Hours Every Week', ratio '16:9 · 1920 × 1080', 2 scenes, 4.0s duration, colors #0A0A0B/#E4B8A0, format 'MP4 · H.264'). Clicked 'Export MP4' button, progress bar appeared and tracked real-time progress (21% → 49% → 89% → 100%). Export completed in ~4-5 seconds (real-time recording). REAL MP4 FILE DOWNLOADED: 'save-10-hours-every-week.mp4', file size 173,522 bytes (169.46 KB). Done banner appeared showing 'MP4 downloaded', 'Download again' and 'Re-render' buttons both present and functional. 9:16 EXPORT: Injected 9:16 state, /export page showed correct portrait ratio '9:16 · 1080 × 1920'. Export completed successfully, REAL MP4 FILE DOWNLOADED: 'save-10-hours-every-week.mp4', file size 135,861 bytes (132.68 KB). Progress reached 100%, done banner appeared. NO CONSOLE ERRORS during either export. All acceptance criteria met: (1) Export page UI correct for both ratios, (2) Progress tracking works (real-time updates), (3) Actual MP4 files downloaded with valid file sizes, (4) Done banner + download-again/re-render buttons appear on completion, (5) Both 16:9 and 9:16 exports work perfectly. The client-side canvas + MediaRecorder implementation is production-ready."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 7
+  test_sequence: 8
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Project analyze endpoint (Gemini) feeds preview"
+  current_focus: []
   stuck_tasks:
     - "Project analyze endpoint (Gemini) feeds preview"
   test_all: false
-  test_priority: "stuck_first"
+  test_priority: "high_first"
 
 agent_communication:
     -agent: "main"
@@ -163,3 +177,5 @@ agent_communication:
     -message: "CRITICAL BLOCKER: Backend /api/projects/analyze endpoint is failing with LiteLLM budget error. The budget limit is set to $0.001 but Gemini API calls cost ~$0.0078565, causing immediate failure. Backend logs confirm one successful call was made earlier, but the cumulative budget has been exhausted. This blocks all testing of the Remotion preview feature. Frontend flow (ratio → brand → script) works correctly. REQUIRED ACTION: Investigate and fix the LiteLLM budget configuration. This may be set via: (1) EMERGENT_LLM_KEY API key limits, (2) emergentintegrations library configuration, or (3) environment variables. The budget should be increased or removed for testing. Once fixed, the full preview flow can be tested."
     -agent: "testing"
     -message: "✅ Phase 5 Remotion preview FULLY TESTED and WORKING via localStorage injection workaround (as instructed in review request due to budget exhaustion). All core requirements verified: player renders animated content with B-roll placeholders, headlines animate word-by-word, keywords styled with opposite font (italics visible), scene strip scrubbing works, both 16:9 (1920×1080) and 9:16 (1080×1920) ratios render correctly with ratio-safe layouts. The frontend implementation is complete and functional. Backend budget issue remains (stuck task) but does not affect preview functionality when plan data is available via other means (localStorage, future API fix, etc.)."
+    -agent: "testing"
+    -message: "✅ Phase 6 MP4 Export FULLY TESTED and WORKING. Tested client-side MP4 export for BOTH 16:9 and 9:16 ratios via localStorage injection (bypassing budget-exhausted backend). RESULTS: (1) 16:9 export produced real MP4 file 'save-10-hours-every-week.mp4' (173,522 bytes / 169.46 KB), progress tracked 21%→49%→89%→100%, done banner + download-again/re-render buttons appeared. (2) 9:16 export produced real MP4 file (135,861 bytes / 132.68 KB), progress tracked 25%→93%→100%, completion UI correct. Export page UI verified: project title, ratio, scenes, duration, colors, format all correct. NO console errors during export. Real-time canvas recording works perfectly (~4-5s for 4s video). MediaRecorder produces valid MP4 files (H.264 codec). All acceptance criteria met. The export feature is production-ready."
