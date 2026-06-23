@@ -73,6 +73,11 @@ Build an internal B-roll automation web application in phases. The app should he
 - Restored empty `backend/.env` (MONGO_URL, DB_NAME, CORS_ORIGINS, EMERGENT_LLM_KEY) and `frontend/.env` (REACT_APP_BACKEND_URL) — the checkout shipped with empty env files and the app was fully down.
 - **KNOWN BLOCKER**: the EMERGENT_LLM_KEY has a very low budget cap (max $0.001, already exceeded), so `POST /api/projects/analyze` ("Generate B-roll Plan") fails with a LiteLLM budget error. The user must add Emergent credits or supply their own LLM key for live generation. Phase 5 preview itself does NOT depend on the LLM.
 
+## What's been implemented (Phase 6 — MP4 Export) — 2026-06-23
+- **Real client-side MP4 export** — no server/Node renderer, no LLM dependency. `frontend/src/lib/videoExport.js` renders the plan onto a 2D `<canvas>` (faithfully mirrors the Remotion composition: brand colors, main/opposite fonts, keyword highlight, B-roll placeholder blocks + label chips, slow zoom, cross-fade transitions, scene order, edited headlines, −2px letter spacing) and records it via `MediaRecorder.captureStream` preferring `video/mp4;codecs=avc1` (H.264) with a WebM fallback (`pickMimeType`).
+- **Export page** (`ExportPanel.jsx`): final Remotion preview (same as Step 05), Export summary (project title, ratio + resolution, scene count, duration, background/highlight hex, format), Export button, real-time progress %, auto-download on completion, "Download again" + "Re-render", cancel-during-render, and an empty state when no plan exists.
+- **Verified** (UI agent): real MP4 files download for both ratios — 16:9 `save-10-hours-every-week.mp4` (173,522 bytes), 9:16 (135,861 bytes); progress reaches 100%; done banner + buttons; no console errors. All 5 acceptance criteria met. **Roll Studio MVP (Phases 1–6) complete.**
+
 ## Prioritized Backlog
 ### P0 (next phase)
 - Wire FastAPI backend (`/api/...`) for project CRUD, script analysis, render orchestration

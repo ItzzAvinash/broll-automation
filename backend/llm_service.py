@@ -1,6 +1,11 @@
 """
-LLM service — wraps Gemini 3 Flash via emergentintegrations for
-structured B-roll plan generation from a video script.
+LLM service — wraps Google Gemini (via the official ``google-genai`` SDK,
+using the team's OWN Gemini API key) for structured B-roll plan generation
+from a video script.
+
+Why the personal key (not the Emergent universal key)?
+  The universal key is rate/budget-capped. Using a personal Gemini key
+  (GEMINI_API_KEY in backend/.env) removes that cap for live generation.
 """
 from __future__ import annotations
 
@@ -11,12 +16,88 @@ import re
 import uuid
 from typing import Any
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-3-flash-preview"
-GEMINI_PROVIDER = "gemini"
+# Current fast "flash" model. Override via env if Google shifts naming.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+# Fallback chain: free-tier flash models intermittently return 503 (overloaded)
+# or 429 (rate limited). We retry the primary then fall through to alternates.
+_FALLBACK_MODELS = [
+    GEMINI_MODEL,
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-2.0-flash-001",
+]
+# De-dupe while preserving order
+_MODEL_CHAIN = list(dict.fromkeys([m for m in _FALLBACK_MODELS if m]))
+
+_RETRYABLE = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "overloaded")
+
+# Lazily-built singleton client (key may not be present at import time).
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    """Return a cached google-genai client built from GEMINI_API_KEY."""
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured in backend/.env")
+        _client = genai.Client(api_key=api_key)
+    return _client
+
+
+def _is_retryable(err: Exception) -> bool:
+    msg = str(err)
+    return any(tok in msg for tok in _RETRYABLE)
+
+
+async def _generate_json(*, system_prompt: str, user_prompt: str) -> str:
+    """Call Gemini asynchronously and return raw text.
+
+    ``response_mime_type='application/json'`` nudges the model to emit clean
+    JSON (no markdown fences); we still defensively parse with ``_extract_json``.
+
+    Resilience: free-tier flash models often return transient 503/429. We try
+    each model in ``_MODEL_CHAIN`` with a couple of backed-off retries before
+    falling through to the next model. The last error is re-raised.
+    """
+    import asyncio
+
+    client = _get_client()
+    config = types.GenerateContentConfig(
+        system_instruction=system_prompt,
+        response_mime_type="application/json",
+        temperature=0.6,
+    )
+
+    last_err: Exception | None = None
+    for model in _MODEL_CHAIN:
+        for attempt in range(3):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model,
+                    contents=user_prompt,
+                    config=config,
+                )
+                if model != GEMINI_MODEL:
+                    logger.warning("Gemini served by fallback model %s", model)
+                return response.text or ""
+            except Exception as e:  # noqa: BLE001 — inspect message for retryability
+                last_err = e
+                if _is_retryable(e) and attempt < 2:
+                    await asyncio.sleep(0.8 * (attempt + 1))
+                    continue
+                # not retryable, or attempts exhausted -> try next model
+                logger.warning("Model %s failed (attempt %d): %s", model, attempt + 1, str(e)[:160])
+                break
+
+    raise last_err or RuntimeError("Gemini generation failed")
 
 
 SYSTEM_PROMPT = """You are an AI B-roll planning assistant for an internal video-production tool.
@@ -122,25 +203,17 @@ async def analyze_script(
     """Call Gemini 3 Flash with the script + brand context and return
     the parsed structured B-roll plan."""
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise RuntimeError("EMERGENT_LLM_KEY is not configured in backend/.env")
-
     if not script or not script.strip():
         raise ValueError("script is empty")
 
     sid = session_id or f"broll-{uuid.uuid4()}"
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=sid,
-        system_message=SYSTEM_PROMPT,
-    ).with_model(GEMINI_PROVIDER, GEMINI_MODEL)
-
-    user_msg = UserMessage(text=_build_user_prompt(script, brand, ratio))
 
     # Non-streaming: we need the full JSON before parsing.
-    logger.info("Calling Gemini 3 Flash for script analysis (session=%s)", sid)
-    raw = await chat.send_message(user_msg)
+    logger.info("Calling Gemini (%s) for script analysis (session=%s)", GEMINI_MODEL, sid)
+    raw = await _generate_json(
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=_build_user_prompt(script, brand, ratio),
+    )
     logger.info("LLM returned %d chars", len(raw or ""))
 
     plan = _extract_json(raw)
@@ -260,23 +333,13 @@ async def regenerate_scene(
     motionStyle / highlightedKeywords / brollSuggestions. scriptText is
     preserved by the caller — the model is instructed to keep it identical."""
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise RuntimeError("EMERGENT_LLM_KEY is not configured in backend/.env")
-
     sid = session_id or f"broll-regen-{uuid.uuid4()}"
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=sid,
-        system_message=SCENE_REGEN_SYSTEM_PROMPT,
-    ).with_model(GEMINI_PROVIDER, GEMINI_MODEL)
-
-    user_msg = UserMessage(
-        text=_build_regen_user_prompt(scene, surrounding, brand, ratio)
-    )
 
     logger.info("Regenerating scene %s (session=%s)", scene.get("order"), sid)
-    raw = await chat.send_message(user_msg)
+    raw = await _generate_json(
+        system_prompt=SCENE_REGEN_SYSTEM_PROMPT,
+        user_prompt=_build_regen_user_prompt(scene, surrounding, brand, ratio),
+    )
     new_scene = _extract_json(raw)
 
     # Defensive defaults
