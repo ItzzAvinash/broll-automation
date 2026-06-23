@@ -58,6 +58,21 @@ Build an internal B-roll automation web application in phases. The app should he
 - **Backend additions**: `llm_service.regenerate_scene()` with focused single-scene prompt + scriptText preservation + duration clamping; `server.py` adds PUT /api/projects/{id}, POST /api/projects/{id}/regenerate, POST /api/projects/{id}/scenes/{order}/regenerate
 - Test report iteration_4: **backend 100% (10/10 pytest)**, **frontend 100%** after fixing the body-click activation bug
 
+## What's been implemented (Phase 5 — Remotion Video Preview) — 2026-06-23
+- **VideoPreview page** (`/preview`) renders a live in-browser preview via `@remotion/player` driven by selected ratio + brand deck + scene plan
+- **Remotion composition** (`remotion/BrollComposition.jsx`): one `<Sequence>` per scene with cross-fade transitions; duration derived from each scene's `duration` at 30fps; canonical 1920×1080 (16:9) / 1080×1920 (9:16) composition size, ratio-safe (composition-space px scale uniformly)
+- **`BRollPlaceholder.jsx`**: premium animated B-roll placeholder block (slow push/zoom 1.0→1.06, drifting brand-color gradient, subtle moving grid, vignette, "B-roll · {assetType}" label chip, faint centered description). Stands in for real footage in MVP
+- **`Caption.jsx`**: word-by-word headline reveal (fade + rise), keyword "pop" spring animation; keywords rendered in HIGHLIGHT color + the OPPOSITE font (main font ↔ counterpart); eyebrow = brandName; optional textOverlay subtitle. All brand text uses letter-spacing −2px
+- **Styling rules enforced**: primary = background, secondary = main text, highlight = keyword text, main font = selected, keyword font = opposite, letter-spacing −2px
+- **Right rail**: clickable Scene strip (scrub/seek to scene via player `seekTo`, active scene synced to `frameupdate`) + Render summary (ratio, frames, duration, composition, background/highlight hex)
+- **Reactivity**: preview reads `state.plan`/`state.brand`/`state.ratio` from ProjectContext, so edits on Step 04 reflect in the preview
+- Added `acknowledgeRemotionLicense` prop to suppress license console warning
+- **Verified** (UI agent, both ratios): animated content renders (not black), B-roll blocks per scene, keyword styling, scrubbing, correct ratio/colors. All 6 acceptance criteria met.
+
+### Environment note (2026-06-23)
+- Restored empty `backend/.env` (MONGO_URL, DB_NAME, CORS_ORIGINS, EMERGENT_LLM_KEY) and `frontend/.env` (REACT_APP_BACKEND_URL) — the checkout shipped with empty env files and the app was fully down.
+- **KNOWN BLOCKER**: the EMERGENT_LLM_KEY has a very low budget cap (max $0.001, already exceeded), so `POST /api/projects/analyze` ("Generate B-roll Plan") fails with a LiteLLM budget error. The user must add Emergent credits or supply their own LLM key for live generation. Phase 5 preview itself does NOT depend on the LLM.
+
 ## Prioritized Backlog
 ### P0 (next phase)
 - Wire FastAPI backend (`/api/...`) for project CRUD, script analysis, render orchestration

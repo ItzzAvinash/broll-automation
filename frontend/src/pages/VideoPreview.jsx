@@ -170,6 +170,7 @@ export default function VideoPreview() {
                   controls
                   loop
                   clickToPlay
+                  acknowledgeRemotionLicense
                   doubleClickToFullscreen
                   style={{
                     width: "100%",
