@@ -1,0 +1,65 @@
+{
+  "summary": "Phase 4 (AI Analysis editor) end-to-end tested. Backend: 10/10 pytest cases PASS — PUT /api/projects/{id}, POST scenes/{order}/regenerate (with/without sceneScriptText override), POST /regenerate (full plan), unknown-id 404s, empty originalScript 400, scene renumbering, scriptText preservation. Frontend: editor renders 4 scenes, all editable fields work (headline/overlay/scriptText/motion/duration/keywords/broll), autosave indicators (saving→saved) fire correctly, reorder swaps scenes and persists to backend, single-scene regenerate produces fresh headline while preserving scriptText, full-plan toolbar regenerate replaces 4→5 scenes with success toast, reload persists state from localStorage + Mongo, glassmorphism (backdrop-filter blur+saturate) renders correctly, 0 console errors. ONE bug found: clicking a scene card to set it active does not reliably update the preview because the expanded body uses e.stopPropagation, swallowing the click before it bubbles to the root onClick={onSelect}.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "SceneEditCard.jsx",
+        "issue": "Clicking inside a scene card body does NOT set it as active — the expanded content div has onClick={(e) => e.stopPropagation()} (line 197), which prevents click events from bubbling to the root <div onClick={onSelect}> (line 103). As a result, the right-side PlanPreviewPanel does not update when the user clicks on a non-header area of a card. The spec explicitly says 'clicking any scene card sets it active — the right-side preview-stage updates'. In my test, after clicking scene-edit-card-2, preview headline remained scene 1's value, and editing scene-headline-input-2 did NOT update the preview because scene 2 was never marked active.",
+        "selector": "[data-testid^=\"scene-edit-card-\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase4_editor.py",
+    "/app/test_reports/pytest/phase4_results.xml"
+  ],
+  "action_items": [
+    "Fix scene activation: in /app/frontend/src/components/broll/SceneEditCard.jsx, either (a) move onClick={onSelect} from the root div (line 103) to the header bar at line 112 so all header clicks select but body clicks don't, or (b) remove the stopPropagation on the expanded body (line 197) and instead stopPropagation only on the individual inputs/selects/buttons that need it. Preferred fix: also call onSelect when focusing any input inside the card so editing immediately makes the scene active and the preview updates live."
+  ],
+  "critical_code_review_comments": [
+    "server.py PUT /api/projects/{id} returns the existing record with the new plan merged in JS (existing['plan'] = plan_doc), but never re-fetches — fine for now but make sure brand/ratio aren't supposed to be updatable via this endpoint (currently they aren't, which seems intentional).",
+    "server.py regenerate_single_scene preserves scriptText after the LLM call by overwriting new_scene['scriptText'] = target_scene['scriptText']. Good defensive behavior.",
+    "AnalysisReview.jsx: activeScene falls back to scenes[0] if activeOrder doesn't match — defensive and good. But because the selection bug above means activeOrder rarely changes, the user effectively only ever previews scene 1 unless they click precisely in the header bar.",
+    "SceneEditCard line 197 stopPropagation is a heavy-handed solution. Suggest stopping propagation only on interactive children (input, select, textarea, button) via per-element handlers, or just not setting onClick on the root and instead wiring onSelect onto the header bar only.",
+    "llm_service.regenerate_scene clamps duration and provides defensive defaults. Good.",
+    "Phase 4 endpoints correctly exclude MongoDB _id via projection {\"_id\": 0}. No _id leak in any tested response."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase4_editor.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "~92% (1 UX bug — scene-card click doesn't activate)"},
+  "test_credentials": "none required",
+  "seed_data_creation": "Created 2 TEST_ project records during backend pytest (brandName='TEST_Phase4') + 1 via frontend generate flow. Safe to leave; filterable by brandName.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suites: /app/backend/tests/test_projects_analyze.py (Phase 3, 10 tests) and /app/backend/tests/test_phase4_editor.py (Phase 4, 10 tests). Both cache one analyze() call per session to limit LLM cost — full Phase 4 run is ~47s. Sample script in test_phase4_editor.py:SAMPLE_SCRIPT. To retest the scene-card-click fix, after generation: page.click('[data-testid=\"scene-edit-card-2\"]') should make preview-headline equal scene-headline-input-2. localStorage key is 'broll.studio.v3'.",
+  "verified_flows": [
+    "PUT /api/projects/{id} updates plan + persists (GET verifies)",
+    "PUT renumbers scenes 1..N when user sends reordered list with arbitrary order values",
+    "PUT unknown id -> 404",
+    "POST /scenes/{order}/regenerate returns fresh headline/motion/keywords/broll, preserves scriptText, other scenes untouched, persisted",
+    "POST /scenes/{order}/regenerate accepts sceneScriptText override, override persists",
+    "POST /scenes/{order}/regenerate unknown project -> 404, out-of-range order -> 404",
+    "POST /regenerate (full) produces 3-6 scenes, originalScript preserved, persisted",
+    "POST /regenerate unknown id -> 404, empty originalScript -> 400",
+    "Frontend: plan-title-input editable + autosave saving/saved indicators appear within 1s/3s",
+    "Frontend: scene-headline-input-{n}, scene-overlay-input-{n}, scene-script-input-{n} all editable + autosave",
+    "Frontend: scene-motion-select-{n} has 10 options, scene-duration-input-{n} has min=2 max=8 step=0.1",
+    "Frontend: keyword-reason has 10 options, broll-placement 5, broll-type 3, broll-priority 3 (matches spec)",
+    "Frontend: scene-add-keyword + keyword-remove work, scene-add-broll works",
+    "Frontend: scene-down-1 swaps scenes 1<->2, S## labels update, persists to backend (verified via GET /api/projects/{id})",
+    "Frontend: scene-regenerate-{n} disables button during regen, replaces headline with fresh content, success toast",
+    "Frontend: regenerate-full-plan-toolbar replaces full plan (4->5 scenes observed), success toast 'Full plan regenerated · 5 scenes'",
+    "Frontend: full page reload preserves title + scene headline (localStorage + backend both consistent)",
+    "Frontend: glassmorphism applied — backdrop-filter blur(28px) saturate(1.4), translucent white borders",
+    "Frontend: 0 JavaScript console errors throughout entire flow"
+  ],
+  "rca_of_the_issue": "SCENE-CARD CLICK ACTIVATION BUG — File: /app/frontend/src/components/broll/SceneEditCard.jsx. The root div (line 101-110) has onClick={onSelect} to make the scene active. Inside, when the card is expanded (line 196), the body div (line 197) has onClick={(e) => e.stopPropagation()}. This stopPropagation was added to prevent input clicks from triggering re-selection, but it incidentally swallows every click anywhere in the body — including blank areas. So the only clickable activation surface is the thin header bar between the toggle and the action buttons. REPRO: 1) generate plan, 2) page.click('[data-testid=\"scene-edit-card-2\"]') which clicks the centre of the card (inside the expanded body), 3) check plan-preview-headline — it still shows scene 1's headline, not scene 2's. FIX: Replace line 197 with selective stopPropagation only on interactive children. Best minimal patch: change line 197 from `<div className=\"px-5 py-5 space-y-5\" onClick={(e) => e.stopPropagation()}>` to `<div className=\"px-5 py-5 space-y-5\">` and rely on natural input semantics, OR move `onClick={onSelect}` from line 103 to the header bar div at line 112 (which is outside the expanded body)."
+}
