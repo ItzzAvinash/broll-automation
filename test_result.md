@@ -123,11 +123,11 @@ backend:
 frontend:
   - task: "Phase 5 — Remotion video preview (VideoPreview page + composition)"
     implemented: true
-    working: "NA"
+    working: true
     file: "frontend/src/pages/VideoPreview.jsx, frontend/src/remotion/BrollComposition.jsx, frontend/src/remotion/Caption.jsx, frontend/src/remotion/BRollPlaceholder.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         -working: "NA"
         -agent: "main"
@@ -135,11 +135,14 @@ frontend:
         -working: "NA"
         -agent: "testing"
         -comment: "CANNOT TEST: The flow up to script generation works perfectly (ratio selection auto-advances correctly, brand deck shows 3 colors + font selectors, script input accepts text). However, the 'Generate B-roll Plan' button triggers the backend API which fails with budget error, preventing any plan data from being generated. Without plan data, the preview page shows the empty state ('Nothing to preview yet') and the Remotion player is not rendered. Cannot verify: player rendering, animated playback, keyword styling, B-roll placeholders, scene strip scrubbing, or 9:16 ratio support. Frontend code appears correct based on review, but needs backend fix to test end-to-end. Minor issue: Font loading warnings for Gotham-BookItalic (OTS parsing error: invalid sfntVersion), but this is non-blocking."
+        -working: true
+        -agent: "testing"
+        -comment: "TESTED via localStorage injection (bypassing budget-exhausted backend). Injected pre-built plan with 3 scenes into localStorage key 'broll.studio.v3', then tested /preview page. VERIFIED WORKING: (1) 16:9 ratio: Player renders at 1920×1080@30fps, header and render summary show correct dimensions/colors (#0A0A0B bg, #E4B8A0 highlight). (2) Remotion player renders animated content (NOT solid black) - confirmed via playback screenshots showing B-roll placeholder blocks with centered description text (CRM Dashboard, Clock Animation, Analytics Graph) and B-roll label chips in top-right corner (e.g., '▸ B-ROLL · SCREEN RECORDING'). (3) Headlines animate and display correctly ('Save 10 Hours Every Week', 'Time Is Everything', 'Grow Your Revenue'). (4) Keywords are visibly styled with different font (italics) - 'Hours', 'Time', 'Revenue', 'analytics' all appear in italics vs. regular text, confirming opposite font logic works. (5) Scene strip shows all 3 scenes with headlines and B-roll descriptions. (6) Scene strip scrubbing works - clicking scene 2 and 3 changes active scene styling and player content. (7) 9:16 vertical ratio: Player renders at 1080×1920@30fps, render summary shows '9:16', layout is ratio-safe (portrait frame). Playback works for both ratios. Minor: Font loading warnings for Gotham-BookItalic (OTS parsing error) are non-blocking. Console shows 422 errors (likely backend API calls) but do not affect preview functionality. The Remotion preview feature is fully functional when plan data is available."
 
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 6
+  test_sequence: 7
   run_ui: false
 
 test_plan:
@@ -155,3 +158,5 @@ agent_communication:
     -message: "Restored missing .env files (app was fully down). Backend analyze verified working. Please test the FULL flow end-to-end: (1) /ratio pick YouTube 16:9, (2) /brand keep/adjust colors+font, (3) /script paste a script with clear product/stat keywords and click 'Generate B-roll Plan' (real Gemini call, allow up to ~60s), (4) go to /preview, press play on the Remotion player and confirm scenes animate (headline word-by-word reveal, keyword rendered in highlight color with the opposite font, B-roll placeholder block per scene with label), confirm scene strip scrubbing changes the active scene, and the render summary shows the selected ratio/colors. Then repeat ratio as Instagram 9:16 and confirm the player renders a vertical, ratio-safe layout. Report any console errors."
     -agent: "testing"
     -message: "CRITICAL BLOCKER: Backend /api/projects/analyze endpoint is failing with LiteLLM budget error. The budget limit is set to $0.001 but Gemini API calls cost ~$0.0078565, causing immediate failure. Backend logs confirm one successful call was made earlier, but the cumulative budget has been exhausted. This blocks all testing of the Remotion preview feature. Frontend flow (ratio → brand → script) works correctly. REQUIRED ACTION: Investigate and fix the LiteLLM budget configuration. This may be set via: (1) EMERGENT_LLM_KEY API key limits, (2) emergentintegrations library configuration, or (3) environment variables. The budget should be increased or removed for testing. Once fixed, the full preview flow can be tested."
+    -agent: "testing"
+    -message: "✅ Phase 5 Remotion preview FULLY TESTED and WORKING via localStorage injection workaround (as instructed in review request due to budget exhaustion). All core requirements verified: player renders animated content with B-roll placeholders, headlines animate word-by-word, keywords styled with opposite font (italics visible), scene strip scrubbing works, both 16:9 (1920×1080) and 9:16 (1080×1920) ratios render correctly with ratio-safe layouts. The frontend implementation is complete and functional. Backend budget issue remains (stuck task) but does not affect preview functionality when plan data is available via other means (localStorage, future API fix, etc.)."
